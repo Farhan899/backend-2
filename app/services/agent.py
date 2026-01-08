@@ -88,9 +88,19 @@ class AgentService:
         tool_name = IntentMapper.get_tool_name(intent)
         params = AgentService._extract_parameters(intent, user_input, user_id)
 
+        logger.info(
+            f"Prepared tool invocation - user_id: {user_id}, conversation_id: {conversation_id}, "
+            f"tool_name: {tool_name}, extracted_params: {params}, intent: {intent.value}"
+        )
+
         # Step 5: Invoke Tool (Task MCP)
         tool_result = await AgentService._invoke_tool(
             tool_name, params, user_id, conversation_id
+        )
+
+        logger.info(
+            f"Tool invocation completed - user_id: {user_id}, conversation_id: {conversation_id}, "
+            f"tool_name: {tool_name}, tool_result: {tool_result}"
         )
 
         # Step 6 & 7: Contact-7 and Context-7 enrichment (Phase 5)
@@ -171,14 +181,44 @@ class AgentService:
 
         if intent == Intent.ADD:
             # Extract task title from message
-            # Simple heuristic: everything after "add" or "create"
+            # Simple heuristic: everything after recognized command
             import re
 
-            match = re.search(r"^(?:add|create|new task|remember)\s+(.+)$", user_input.lower())
+            logger.info(f"Extracting parameters for ADD intent - input: '{user_input}'")
+
+            # Look for various patterns that indicate adding a task
+            patterns = [
+                r"^(?:add|create|remember)\s+(.+)$",
+                r"^(?:add|create|remember)\s+task\s+(.+)$",
+                r"^new\s+task\s+(.+)$",
+                r"^task\s+to\s+(.+)$"
+            ]
+
+            match = None
+            for pattern in patterns:
+                match = re.search(pattern, user_input.lower().strip())
+                if match:
+                    logger.info(f"Pattern matched: '{pattern}', extracted: '{match.group(1).strip()}'")
+                    break
+
             if match:
                 params["title"] = match.group(1).strip()
             else:
-                params["title"] = "Untitled task"
+                logger.info("No pattern matched, using fallback method")
+                # Fallback: take last portion after common keywords
+                for keyword in ['add', 'create', 'remember', 'task']:
+                    pos = user_input.lower().find(keyword)
+                    if pos != -1:
+                        extracted_title = user_input[pos + len(keyword):].strip()
+                        logger.info(f"Fallback extraction using keyword '{keyword}': '{extracted_title}'")
+                        params["title"] = extracted_title
+                        if params["title"]:
+                            break
+                else:
+                    params["title"] = "Untitled task"
+                    logger.info("Using default 'Untitled task' as fallback")
+
+            logger.info(f"Final extracted title: '{params['title']}'")
 
         elif intent == Intent.LIST:
             params["include_completed"] = "completed" not in user_input.lower()
@@ -227,26 +267,36 @@ class AgentService:
         Using TaskMCPServer directly for now.
         """
         from mcp_servers.task_mcp.main import TaskMCPServer
+        from app.utils.logging import logger
 
-        server = TaskMCPServer()
+        logger.info(f"Invoking tool '{tool_name}' with params: {params}")
 
-        # All task tools expect user_id in params
-        params["user_id"] = user_id
+        try:
+            server = TaskMCPServer()
 
-        if tool_name == "add_task":
-            return await server.add_task(params)
-        elif tool_name == "list_tasks":
-            return await server.list_tasks(params)
-        elif tool_name == "get_task":
-            return await server.get_task(params)
-        elif tool_name == "update_task":
-            return await server.update_task(params)
-        elif tool_name == "delete_task":
-            return await server.delete_task(params)
-        elif tool_name == "complete_task":
-            return await server.complete_task(params)
-        else:
-            return {"error": f"Unknown tool: {tool_name}"}
+            # All task tools expect user_id in params
+            params["user_id"] = user_id
+
+            if tool_name == "add_task":
+                result = await server.add_task(params)
+            elif tool_name == "list_tasks":
+                result = await server.list_tasks(params)
+            elif tool_name == "get_task":
+                result = await server.get_task(params)
+            elif tool_name == "update_task":
+                result = await server.update_task(params)
+            elif tool_name == "delete_task":
+                result = await server.delete_task(params)
+            elif tool_name == "complete_task":
+                result = await server.complete_task(params)
+            else:
+                result = {"error": f"Unknown tool: {tool_name}"}
+
+            logger.info(f"Tool '{tool_name}' executed successfully, result: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Error invoking tool '{tool_name}': {str(e)}", exc_info=True)
+            return {"error": f"Tool execution failed: {str(e)}", "code": 500}
 
     @staticmethod
     def _generate_response(
