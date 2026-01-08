@@ -104,7 +104,8 @@ async def chat(
         )
     except Exception as e:
         # Unexpected error
+        logger.error("Chat processing failed", error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred processing your message",
+            detail=f"An unexpected error occurred processing your message: {str(e)}",
         )
