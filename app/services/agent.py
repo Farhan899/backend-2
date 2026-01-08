@@ -224,44 +224,29 @@ class AgentService:
         """
         Invoke an MCP tool and return result.
 
-        Phase 3 placeholder: Returns mock result.
-        Phase 3 implementation will actually call Task MCP Server.
+        Using TaskMCPServer directly for now.
         """
-        # TODO: Phase 3 - Implement actual MCP client invocation
+        from mcp_servers.task_mcp.main import TaskMCPServer
 
-        # Mock response for demonstration
+        server = TaskMCPServer()
+
+        # All task tools expect user_id in params
+        params["user_id"] = user_id
+
         if tool_name == "add_task":
-            return {
-                "id": 1,
-                "user_id": user_id,
-                "title": params.get("title", "Untitled"),
-                "description": None,
-                "is_completed": False,
-                "created_at": "2026-01-07T12:00:00",
-                "updated_at": "2026-01-07T12:00:00",
-            }
+            return await server.add_task(params)
         elif tool_name == "list_tasks":
-            return {
-                "tasks": [
-                    {
-                        "id": 1,
-                        "title": "Buy groceries",
-                        "is_completed": False,
-                    },
-                    {
-                        "id": 2,
-                        "title": "Write report",
-                        "is_completed": True,
-                    },
-                ]
-            }
+            return await server.list_tasks(params)
+        elif tool_name == "get_task":
+            return await server.get_task(params)
+        elif tool_name == "update_task":
+            return await server.update_task(params)
+        elif tool_name == "delete_task":
+            return await server.delete_task(params)
         elif tool_name == "complete_task":
-            return {
-                "id": params.get("task_id"),
-                "is_completed": params.get("completed", True),
-            }
+            return await server.complete_task(params)
         else:
-            return {"success": True}
+            return {"error": f"Unknown tool: {tool_name}"}
 
     @staticmethod
     def _generate_response(

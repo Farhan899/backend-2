@@ -11,6 +11,9 @@ from alembic import context
 
 # Import all models here for autogenerate support
 from app.models.task import Task
+from app.models.conversation import Conversation
+from app.models.message import Message
+from app.models.user import User
 from app.core.config import settings
 
 # this is the Alembic Config object, which provides
